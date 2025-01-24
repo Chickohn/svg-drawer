@@ -10,7 +10,7 @@ from io import BytesIO
 
 WIDTH = 600   # bounding box width
 HEIGHT = 600  # bounding box height
-STEP_SIZE = 5
+STEP_SIZE = 10
 
 # We'll store all occupied coordinates in this global set
 occupied = set()
