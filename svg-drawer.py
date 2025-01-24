@@ -2,11 +2,7 @@ import random
 import svgwrite
 
 # Live preview
-import cairosvg
 import tkinter as tk
-from PIL import Image, ImageTk
-from io import BytesIO
-
 
 WIDTH = 600   # bounding box width
 HEIGHT = 600  # bounding box height
@@ -242,30 +238,34 @@ class Line:
             self.step_diagonal_with_systematic_fallback()
 
 class LivePreview:
+    """Handles live preview using Tkinter."""
     def __init__(self, width, height):
         self.root = tk.Tk()
         self.root.title("SVG Live Preview")
         self.canvas = tk.Canvas(self.root, width=width, height=height, bg="white")
         self.canvas.pack()
-        self.img_id = None
 
-    def update_preview(self, svg_data):
-        # Convert SVG to PNG
-        png_data = BytesIO()
-        cairosvg.svg2png(bytestring=svg_data, write_to=png_data)
-        png_data.seek(0)
+    def draw_line(self, line):
+        """Draw a line on the canvas."""
+        if len(line.path) > 1:
+            for i in range(len(line.path) - 1):
+                x1, y1 = line.path[i]
+                x2, y2 = line.path[i + 1]
+                self.canvas.create_line(x1, y1, x2, y2, fill="black", width=2)
 
-        # Load PNG into Tkinter
-        image = Image.open(png_data)
-        photo = ImageTk.PhotoImage(image)
+    def draw_circle(self, x, y):
+        """Draw a circle on the canvas."""
+        r = 5
+        self.canvas.create_oval(x - r, y - r, x + r, y + r, outline="black")
 
-        # Display image on canvas
-        if self.img_id is not None:
-            self.canvas.delete(self.img_id)
-        self.img_id = self.canvas.create_image(0, 0, anchor="nw", image=photo)
-
-        # Keep a reference to prevent garbage collection
-        self.canvas.image = photo
+    def update_preview(self, lines):
+        """Update the canvas with all lines and circles."""
+        self.canvas.delete("all")  # Clear the canvas
+        for line in lines:
+            self.draw_line(line)
+            if line.path:
+                x, y = line.path[-1]
+                self.draw_circle(x, y)  # Draw a circle at the end of the line
 
     def start(self):
         self.root.mainloop()
@@ -321,82 +321,89 @@ def create_svg(lines):
 
 
 def main():
-    random.seed(42)
+    from time import sleep
+    seed = random.randint(0,1000000)
+    random.seed(seed)
     preview = LivePreview(WIDTH, HEIGHT)
 
     # 1) Create the main line
     main_line = Line(0, 0, max_steps=999999, allow_branch=False)
-    # Move diagonally until x>=300 or y>=300
-    while main_line.active:
-        if main_line.x >= 300 or main_line.y >= 300:
-            main_line.active = False
-            break
-        main_line.step_diagonal_with_systematic_fallback()
-        svg = create_svg(all_lines)
-        svg_data = svg.tostring()  # Convert the SVG object to a string
-        preview.update_preview(svg_data)
-
-    main_length = main_line.steps_taken
-
-    print(f"Main line finished after {main_length} steps.")
-
     all_lines = [main_line]
 
-    # 2) We want 15 more lines with offsets:
-    #    (0,5), (5,0), (0,10), (10,0), ...
-    # We'll track how many lines have been created so far (besides the main line).
-    num_extra_lines = 15
-    offset_count = 1  # we start from 1 for the 5-based increments
-
-    # We'll also keep a queue or list in case lines spawn branches
-    # as we progress. We'll process them in order.
-    # We'll call the lines in the offset pattern "primary lines."
-    # If they spawn a branch, we create the branch line and add it after the parent finishes.
-    # Each new line also can spawn at most 1 branch.
-    # We'll store them in all_lines in the order they are created.
-    
-    for i in range(num_extra_lines):
-        # Compute offset
-        # For i=0 -> offset_count=1 => offset=5
-        # for i=1 -> offset_count=2 => offset=10
-        offset_val = 5 * offset_count
-        # Alternate between (0, offset) and (offset, 0)
-        if i % 2 == 0:
-            start_x, start_y = (0, offset_val)
-        else:
-            start_x, start_y = (offset_val, 0)
-
-        offset_count += 1
-
-        # Make the line
-        max_steps = max(1, main_length - 5)  # ensure it's at least 1
-        line_obj = Line(start_x, start_y, max_steps, allow_branch=True)
-        # now we step it until it's done
-        while line_obj.can_continue():
-            line_obj.step()
-            # Check if it just branched:
-            if (line_obj.used_branch and not line_obj.active):
-                # Create the branch line
-                branch_line = create_branch_line(line_obj)
-                if branch_line is not None:
-                    all_lines.append(branch_line)
-                    # We now run the branch line until it stops
-                    while branch_line.can_continue():
-                        branch_line.step()
-                # The parent line is done for good
+    def generate_lines():
+        # Move diagonally until x>=300 or y>=300
+        while main_line.active:
+            if main_line.x >= 300 or main_line.y >= 300:
+                main_line.active = False
                 break
-        all_lines.append(line_obj)
-        svg = create_svg(all_lines)
-        svg_data = svg.tostring()  # Convert the SVG object to a string
-        preview.update_preview(svg_data)
+            main_line.step_diagonal_with_systematic_fallback()
 
-    import threading
-    threading.Thread(target=preview.start, daemon=True).start()
+        main_length = main_line.steps_taken
+
+        print(f"Main line finished after {main_length} steps.")
+
+        
+        # 2) We want 15 more lines with offsets:
+        #    (0,5), (5,0), (0,10), (10,0), ...
+        # We'll track how many lines have been created so far (besides the main line).
+        num_extra_lines = 15
+        offset_count = 1  # we start from 1 for the 5-based increments
+
+        # We'll also keep a queue or list in case lines spawn branches
+        # as we progress. We'll process them in order.
+        # We'll call the lines in the offset pattern "primary lines."
+        # If they spawn a branch, we create the branch line and add it after the parent finishes.
+        # Each new line also can spawn at most 1 branch.
+        # We'll store them in all_lines in the order they are created.
+        
+        for i in range(num_extra_lines):
+            # Compute offset
+            # For i=0 -> offset_count=1 => offset=5
+            # for i=1 -> offset_count=2 => offset=10
+            offset_val = 5 * offset_count
+            # Alternate between (0, offset) and (offset, 0)
+            if i % 2 == 0:
+                start_x, start_y = (0, offset_val)
+            else:
+                start_x, start_y = (offset_val, 0)
+
+            offset_count += 1
+
+            # Make the line
+            max_steps = max(1, main_length - 5)  # ensure it's at least 1
+            line_obj = Line(start_x, start_y, max_steps, allow_branch=True)
+            # now we step it until it's done
+            while line_obj.can_continue():
+                
+                line_obj.step()
+                # Check if it just branched:
+                if (line_obj.used_branch and not line_obj.active):
+                    # Create the branch line
+                    branch_line = create_branch_line(line_obj)
+                    if branch_line is not None:
+                        all_lines.append(branch_line)
+                        # We now run the branch line until it stops
+                        while branch_line.can_continue():
+                            branch_line.step()
+                            # preview.update_preview(all_lines)
+                    # The parent line is done for good
+                    break
+            all_lines.append(line_obj)
+            # sleep(1)
+
+    # Run the line generation in a background thread
+    # import threading
+    # generation_thread = threading.Thread(target=generate_lines, daemon=True)
+    # generation_thread.start()
+    generate_lines()
+
+    # preview.start()
 
     # 3) Output everything
     svg = create_svg(all_lines)
     svg.save()
     print("SVG saved as output.svg")
+    print("Seed:", seed)
 
 
 if __name__ == "__main__":
