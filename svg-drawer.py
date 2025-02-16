@@ -187,7 +187,8 @@ class Line:
         
         # Otherwise, pick a random event
         r = random.random()
-        if r < 0.01:
+        if r < 0.1:
+            print("Branching!")
             # Try to branch (only if enough steps remain)
             leftover = self.max_steps - self.steps_taken
             if leftover >= 10:
@@ -197,7 +198,8 @@ class Line:
             else:
                 self.step_diagonal_with_systematic_fallback()
             return
-        elif r < 0.02:
+        elif r < 0.05:
+            print("Orthing!")
             # Orth block
             self.used_orth = True
             self.block_of_5_orth()
@@ -395,7 +397,7 @@ class CircuitBoardWindow(QMainWindow):
 
                     # let it match the main line's length minus 5
                     main_length = self.main_line.steps_taken
-                    max_steps = max(1, main_length - 10)
+                    max_steps = max(1, main_length - (random.randrange(2 * self.extra_lines_created, 2 * self.extra_lines_created + 4)))
 
                     line_obj = Line(start_x, start_y, max_steps, allow_branch=True)
                     self.all_lines.append(line_obj)
